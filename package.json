@@ -1,0 +1,25 @@
+{
+   "name": "amqp-broker",
+   "version": "0.0.1",
+   "description": "Abstraction on top of AMQP to gracefully handle reconnecting to RabbitMQ server and re-establishing topology.",
+   "main": "index.js",
+   "scripts": {
+   "test": "echo \"Error: no test specified\" && exit 1"
+   },
+   "repository": {
+   "type": "git",
+   "url": "http://github.com/joeandaverde/amqp-broker.git"
+   },
+   "homepage": "http://github.com/joeandaverde/amqp-broker",
+   "author": "Joe Andaverde",
+
+   "main": "index.js",
+   "scripts": {
+      "test": "echo \"Error: no test specified\" && exit 1"
+   },
+   "author": "",
+   "license": "MIT",
+   "dependencies": {
+      "amqplib": "^0.4.0"
+   }
+}
