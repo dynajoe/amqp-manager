@@ -45,6 +45,8 @@ AmqpManager.prototype.channel = function () {
    .then(conn => assertTopology(this.config, conn))
    .then(ch => {
       ch.on('close', onClose.bind(null, ch))
+      ch.on('error', onClose.bind(null, ch))
+
       this.emit('connected')
       return ch
    })
