@@ -24,6 +24,7 @@ const assertTopology = function (config, connection) {
 }
 
 const AmqpConnectionFsm = () => {
+   // TODO: does this need to be created each time?
    return new Machina.BehavioralFsm({
       namespace: 'amqp-connection',
       initialState: 'uninitialized',
@@ -36,6 +37,7 @@ const AmqpConnectionFsm = () => {
          connect: {
             _onEnter: function (state) {
                const connection = state.config.connection
+               // TODO: Allow for secure connection
                const amqpUrl = `amqp://${connection.user}:${connection.password}@${connection.host}:${connection.port}/${encodeURIComponent(connection.vhost)}?heartbeat=30`
 
                Amqp.connect(amqpUrl)
@@ -54,6 +56,7 @@ const AmqpConnectionFsm = () => {
          },
          connected: {
             _onEnter: function (state) {
+               // TODO: Any other connection events to consider?
                state.connection.on('error', () => {
                   this.transition(state, 'failed')
                })
@@ -69,16 +72,19 @@ const AmqpConnectionFsm = () => {
                      channel: channel,
                   })
 
+                  // TODO: Any other channel events to consider?
                   channel.on('error', () => {
                      this.transition(nextState, 'failed')
                   })
 
+                  // TODO: what if closed intentionally?
                   channel.on('close', () => {
                      this.transition(nextState, 'failed')
                   })
 
                   this.transition(nextState, 'ready')
                }, error => {
+                  // TODO: If the topology is bad reconnecting won't help
                   this.transition(_.assign(state, {
                      error: error,
                   }), 'failed')
@@ -91,6 +97,7 @@ const AmqpConnectionFsm = () => {
                const waitTimeMs = Math.min(Math.pow(2, reconnects) * 100, 60 * 1000)
 
                setTimeout(() => {
+                  // TODO: Don't transition to connect if stopped
                   this.transition({
                      config: state.config,
                      reconnects: reconnects + 1,
@@ -100,6 +107,7 @@ const AmqpConnectionFsm = () => {
          },
          failed: {
             _onEnter: function (state) {
+               // TODO: Clean up channel, connection listeners?
                this.transition(state, 'reconnect')
                this.emit('failed', state)
             }
@@ -109,24 +117,17 @@ const AmqpConnectionFsm = () => {
                this.emit('ready', state)
             }
          },
-         error: {
-            _onEnter: function (err) {
-               console.log('Error', err)
-            }
-         },
       },
       start: function (state) {
          this.handle(state, 'start')
       },
-      stop: function () {
-
-      }
    })
 }
 
 const AmqpManager = function (config) {
    EventEmitter.call(this)
    this.config = config
+
    this.fsm = AmqpConnectionFsm()
 
    this.fsm.on('ready', state => {
@@ -134,11 +135,14 @@ const AmqpManager = function (config) {
       this.emit('connected')
    })
 
-   this.fsm.on('failed', state => {
-      this._channel = null
-      this.emit('disconnected')
+   this.fsm.on('failed', () => {
+      if (this._channel) {
+         this._channel = null
+         this.emit('disconnected')
+      }
    })
 
+   // TODO: shouldnt start this in constructor (hate constructors with side effects)
    this.fsm.start({
       config: this.config
    })
@@ -147,6 +151,7 @@ const AmqpManager = function (config) {
 Util.inherits(AmqpManager, EventEmitter)
 
 AmqpManager.prototype.channel = function () {
+   // TODO: wait until channel is available? Should reject with error?
    if (this._channel) {
       return Promise.resolve(this._channel)
    }
