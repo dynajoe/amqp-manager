@@ -42,7 +42,6 @@ AmqpBroker.prototype.handle = function (callback) {
          if (removed) {
             return
          }
-         addAmqpListeners()
 
          this.consumerTag = ch.consume(this.config.queue, msg => {
             callback({
@@ -76,6 +75,7 @@ AmqpBroker.prototype.handle = function (callback) {
       return Promise.resolve()
    }
 
+   addAmqpListeners()
    startConsuming()
 
    return {
