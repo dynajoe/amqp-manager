@@ -8,7 +8,7 @@ AmqpBroker.prototype.publish = function (msg) {
 
    return this.amqpManager.channel()
    .then(ch => {
-      return ch.publish(this.config.exchange, this.config.pattern, data)
+      return ch.publish(this.config.publish.exchange, this.config.publish.pattern, data, this.config.publish.options)
    })
    .then(null)
 }
@@ -43,7 +43,7 @@ AmqpBroker.prototype.handle = function (callback) {
             return
          }
 
-         this.consumerTag = ch.consume(this.config.queue, msg => {
+         this.consumerTag = ch.consume(this.config.consume.queue, msg => {
             callback({
                data: JSON.parse(msg.content),
                fields: msg.fields,
@@ -58,7 +58,7 @@ AmqpBroker.prototype.handle = function (callback) {
                   ch.nack(msg, false, false)
                }
             })
-         })
+         }, this.config.consume.options)
       })
    }
 

@@ -17,9 +17,17 @@ module.exports = {
       const registerBroker = (messageType, exchange, queue, pattern) => {
          registrar.register(messageType, () => {
             return new AmqpBroker(amqpManager, {
-               exchange: exchange,
-               pattern: pattern,
-               queue: queue,
+               consume: {
+                  queue: queue,
+               },
+               publish: {
+                  pattern: pattern,
+                  exchange: exchange,
+                  options: {
+                     persistent: true,
+                     mandatory: true,
+                  }
+               }
             })
          })
       }

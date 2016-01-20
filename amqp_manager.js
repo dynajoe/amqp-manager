@@ -24,6 +24,8 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
    initialState: 'uninitialized',
    initialize: function (config) {
       this.config = config
+
+
       this.memory = {}
    },
    states: {
@@ -68,8 +70,13 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
       },
       assert: {
          _onEnter: function () {
-            this.memory.connection.createChannel()
+            const channelType = this.config.channel.confirm
+               ? 'createConfirmChannel' : 'createChannel'
+
+            this.memory.connection[channelType]()
             .then(channel => {
+               channel.prefetch(this.config.channel.prefetch)
+
                _.assign(this.memory, {
                   channel: channel,
                })
@@ -137,13 +144,6 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
             }, waitTimeMs)
          }
       },
-      failed: {
-         _onEnter: function () {
-            this.cleanHandlers()
-            this.transition('reconnect')
-            this.emit('failed', this.memory)
-         }
-      },
       error: {
          _onEnter: function (error) {
             this.cleanHandlers()
@@ -186,7 +186,13 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
 
 const AmqpManager = function (config) {
    EventEmitter.call(this)
-   this.config = config
+
+   this.config = _.defaultsDeep(config, {
+      channel: {
+         prefetch: 1,
+         confirm: true,
+      }
+   })
 
    this.fsm = new AmqpConnectionFsm(this.config)
 

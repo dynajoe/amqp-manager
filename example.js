@@ -18,6 +18,9 @@ const AmqpConfig = {
         port: Config.AMQP_PORT,
         vhost: Config.AMQP_VHOST,
     },
+    channel: {
+      confirm: true
+    },
     exchanges: [{
         exchange: 'device.inbound.ex',
         type: 'fanout',
@@ -57,26 +60,25 @@ const AmqpConfig = {
 }
 
 const RunApp = () => {
-    const amqp = AmqpBroker.configure(AmqpConfig)
+   const amqp = AmqpBroker.configure(AmqpConfig)
 
-    amqp.registerBroker('device.inbound', 'device.inbound.ex', 'device.inbound.q', '')
-    amqp.registerBroker('device.sensor', 'device.sensor.ex', 'device.sensor.q', '')
-    var i = 0;
-    amqp.registrar.broker('device.inbound')
-        .then(broker => {
-        setInterval(() => {
+   amqp.registerBroker('device.inbound', 'device.inbound.ex', 'device.inbound.q', '')
+   amqp.registerBroker('device.sensor', 'device.sensor.ex', 'device.sensor.q', '')
 
-        broker.publish(new Date().toString())
-            .catch(e => {
+   amqp.registrar.broker('device.inbound')
+   .then(broker => {
+      setInterval(() => {
+         broker.publish(new Date().toString())
+         .catch(e => {
             console.log(new Date(), 'Error', e.message)
-    })
-    }, 1000)
+         })
+      }, 1000)
 
-    broker.handle(msg => {
-        console.log(msg.data)
-    msg.ack()
-})
-})
+      broker.handle(msg => {
+         console.log(msg.data)
+         msg.ack()
+      })
+   })
 }
 
 RunApp()
