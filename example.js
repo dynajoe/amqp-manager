@@ -61,10 +61,11 @@ const RunApp = () => {
 
     amqp.registerBroker('device.inbound', 'device.inbound.ex', 'device.inbound.q', '')
     amqp.registerBroker('device.sensor', 'device.sensor.ex', 'device.sensor.q', '')
-
+    var i = 0;
     amqp.registrar.broker('device.inbound')
         .then(broker => {
         setInterval(() => {
+
         broker.publish(new Date().toString())
             .catch(e => {
             console.log(new Date(), 'Error', e.message)

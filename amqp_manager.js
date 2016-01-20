@@ -4,156 +4,212 @@ const EventEmitter = require('events').EventEmitter
 const Machina = require('machina')
 const _ = require('lodash')
 
-const assertTopology = function (config, connection) {
-   return connection.createChannel()
-   .then(channel => {
-      const assertExchanges = () => Promise.all(
-         config.exchanges.map(e => channel.assertExchange(e.exchange, e.type, e.options)))
+const assertTopology = function (config, channel) {
+   const assertExchanges = () => Promise.all(
+      config.exchanges.map(e => channel.assertExchange(e.exchange, e.type, e.options)))
 
-      const assertQueues = () => Promise.all(
-         config.queues.map(q => channel.assertQueue(q.queue, q.options)))
+   const assertQueues = () => Promise.all(
+      config.queues.map(q => channel.assertQueue(q.queue, q.options)))
 
-      const bindQueues = () => Promise.all(
-         config.queues.map(q => channel.bindQueue(q.queue, q.options.exchange, q.options.pattern || '')))
+   const bindQueues = () => Promise.all(
+      config.queues.map(q => channel.bindQueue(q.queue, q.options.exchange, q.options.pattern || '')))
 
-      return assertExchanges()
-      .then(assertQueues)
-      .then(bindQueues)
-      .then(() => channel)
-   })
+   return assertExchanges()
+   .then(assertQueues)
+   .then(bindQueues)
 }
 
-const AmqpConnectionFsm = Machina.BehavioralFsm.extend({
+const AmqpConnectionFsm = Machina.Fsm.extend({
    namespace: 'amqp-connection',
    initialState: 'uninitialized',
+   initialize: function (config) {
+      this.config = config
+      this.memory = {}
+   },
    states: {
       uninitialized: {
-         '*': function (state) {
-            this.deferAndTransition(state, 'idle')
+         '*': function () {
+            this.deferAndTransition('idle')
          },
       },
       idle: {
-         start: function (client) {
-            this.transition(client, 'connect')
+         open: function () {
+            this.transition('connect')
          },
       },
       connect: {
-         _onEnter: function (state) {
-            const connection = state.config.connection
+         _onEnter: function () {
+            const connection = this.config.connection
             // TODO: Allow for secure connection
             const amqpUrl = `amqp://${connection.user}:${connection.password}@${connection.host}:${connection.port}/${encodeURIComponent(connection.vhost)}?heartbeat=30`
 
             Amqp.connect(amqpUrl)
             .then(connection => {
-               this.transition({
+               connection.on('error', error => {
+                  this.handle('connection_error', error)
+               })
+
+               _.assign(this.memory, {
                   connection: connection,
                   reconnects: 0,
-                  config: state.config,
-               }, 'connected')
-            }, error => {
-               this.transition(_.assign(state, {
-                  error: error,
-               }), 'failed')
-            })
-         }
-      },
-      connected: {
-         _onEnter: function (state) {
-            // TODO: Any other connection events to consider?
-            state.connection.on('error', () => {
-               this.transition(state, 'failed')
-            })
+               })
 
-            this.transition(state, 'assert_topology')
+               this.transition('assert')
+            }, error => {
+               this.handle('error', error)
+            })
+         },
+         connection_error: function () {
+            this.transition('reconnect')
+         },
+         error: function () {
+            this.transition('reconnect')
          }
       },
-      assert_topology: {
-         _onEnter: function (state) {
-            assertTopology(state.config, state.connection)
+      assert: {
+         _onEnter: function () {
+            this.memory.connection.createChannel()
             .then(channel => {
-               const nextState = _.assign(state, {
+               _.assign(this.memory, {
                   channel: channel,
                })
 
-               // TODO: Any other channel events to consider?
-               channel.on('error', () => {
-                  this.transition(nextState, 'failed')
+               channel.on('error', error => {
+                  this.handle('channel_error', error)
                })
 
-               // TODO: what if closed intentionally?
-               channel.on('close', () => {
-                  this.transition(nextState, 'failed')
+               channel.on('close', close => {
+                  this.handle('channel_close', close)
                })
 
-               this.transition(nextState, 'ready')
+               return assertTopology(this.config, channel)
+               .then(() => {
+                  this.transition('connected')
+               })
             }, error => {
-               // TODO: If the topology is bad reconnecting won't help
-               this.transition(_.assign(state, {
-                  error: error,
-               }), 'failed')
+               this.handle('channel_error', error)
             })
          },
+         connection_error: function () {
+            this.transition('reconnect')
+         },
+         channel_close: function () {
+            this.transition('reconnect')
+         },
+         channel_error: function (error) {
+            if (/PRECONDITION-FAILED/i.test(error.message)) {
+               return this.emit('error', error)
+            }
+
+            this.transition('reconnect')
+         }
+      },
+      connected: {
+         _onEnter: function () {
+           this.emit('ready', this.memory)
+         },
+         channel_error: function () {
+            this.transition('reconnect')
+         },
+         connection_error: function () {
+            this.transition('reconnect')
+         },
+         channel_close: function () {
+            this.transition('reconnect')
+         }
       },
       reconnect: {
-         _onEnter: function (state) {
-            const reconnects = (state.reconnects || 0)
+         _onEnter: function () {
+            const reconnects = (this.memory.reconnects || 0) + 1
             const waitTimeMs = Math.min(Math.pow(2, reconnects) * 100, 60 * 1000)
+
+            this.emit('reconnect', {
+               reconnects: reconnects,
+               wait_time_ms: waitTimeMs
+            })
 
             setTimeout(() => {
                // TODO: Don't transition to connect if stopped
-               this.transition({
-                  config: state.config,
-                  reconnects: reconnects + 1,
-               }, 'connect')
+               _.assign(this.memory, {
+                     reconnects: reconnects,
+               })
+               this.transition('connect')
             }, waitTimeMs)
          }
       },
       failed: {
-         _onEnter: function (state) {
-            if (state.connection) {
-               state.connection.removeAllListeners()
-            }
-
-            if (state.channel) {
-               state.channel.removeAllListeners()
-            }
-
-            this.transition(state, 'reconnect')
-            this.emit('failed', state)
+         _onEnter: function () {
+            this.cleanHandlers()
+            this.transition('reconnect')
+            this.emit('failed', this.memory)
+         }
+      },
+      error: {
+         _onEnter: function (error) {
+            this.cleanHandlers()
+            this.emit('error', error)
          }
       },
       ready: {
-         _onEnter: function (state) {
-            this.emit('ready', state)
+         _onEnter: function () {
+            this.emit('ready', this.memory)
          }
       },
-   },
-   start: function (state) {
-      this.handle(state, 'start')
-   },
-   stop: function () {
-      this.handle({}, 'stop')
-   }
-})
+      close: {
+         _onEnter: function () {
+            this.cleanHandlers()
 
+            if (this.memory.connection) {
+               this.memory.connection.close()
+            }
+
+            this.emit('close')
+         }
+      }
+   },
+   open: function () {
+      this.handle('open')
+   },
+   close: function () {
+      this.transition('close')
+   },
+   cleanHandlers: function () {
+      if (this.memory.connection) {
+         this.memory.connection.removeAllListeners()
+      }
+
+      if (this.memory.channel) {
+         this.memory.channel.removeAllListeners()
+      }
+   },
+})
 
 const AmqpManager = function (config) {
    EventEmitter.call(this)
    this.config = config
 
-   this.fsm = new AmqpConnectionFsm()
+   this.fsm = new AmqpConnectionFsm(this.config)
 
    this.fsm.on('ready', state => {
       this._channel = state.channel
       this.emit('connected')
    })
 
-   this.fsm.on('failed', () => {
+   const disconnect = () => {
       if (this._channel) {
          this._channel = null
          this.emit('disconnected')
       }
+   }
+
+   this.fsm.on('close', () => {
+      this.closed = true
+      disconnect()
    })
+
+   this.fsm.on('reconnect', disconnect)
+
+   this.fsm.on('error', disconnect)
 
    this.started = false
 }
@@ -161,12 +217,17 @@ const AmqpManager = function (config) {
 Util.inherits(AmqpManager, EventEmitter)
 
 AmqpManager.prototype.channel = function () {
+   if (this.closed) {
+      return Promise.reject(new Error('Connection closed'))
+   }
+
    if (this._channel) {
       return Promise.resolve(this._channel)
    }
 
    if (!this.started) {
-      this.fsm.start({
+      this.started = true
+      this.fsm.open({
          config: this.config
       })
    }
@@ -189,9 +250,16 @@ AmqpManager.prototype.channel = function () {
    return Promise.race([timeout, waitChannel])
 }
 
-AmqpManager.prototype.stop = function () {
+AmqpManager.prototype.close = function () {
    return new Promise((resolve) => {
-      this.fsm.stop()
+      this.fsm.close()
+
+      const onClosed = () => {
+         this.fsm.off('close', onClosed)
+         resolve()
+      }
+
+      this.fsm.on('close', onClosed)
    })
 }
 
