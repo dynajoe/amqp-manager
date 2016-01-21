@@ -12,7 +12,7 @@ const assertTopology = function (config, channel) {
       config.queues.map(q => channel.assertQueue(q.queue, q.options)))
 
    const bindQueues = () => Promise.all(
-      config.queues.map(q => channel.bindQueue(q.queue, q.options.exchange, q.options.pattern || '')))
+      config.bindings.map(b => channel.bindQueue(b.queue, b.exchange, b.pattern)))
 
    return assertExchanges()
    .then(assertQueues)
@@ -24,8 +24,6 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
    initialState: 'uninitialized',
    initialize: function (config) {
       this.config = config
-
-
       this.memory = {}
    },
    states: {
@@ -148,11 +146,6 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
          _onEnter: function (error) {
             this.cleanHandlers()
             this.emit('error', error)
-         }
-      },
-      ready: {
-         _onEnter: function () {
-            this.emit('ready', this.memory)
          }
       },
       close: {
