@@ -40,6 +40,7 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
       },
       connect: {
          _onEnter: function () {
+            console.log('connect/enter')
             const connection = this.config.connection
             const amqpUrl = `${connection.protocol}://${connection.user}:${connection.password}@${connection.host}:${connection.port}/${encodeURIComponent(connection.vhost)}?${QueryString.stringify(connection.params)}`
 
@@ -49,25 +50,37 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
                   this.handle('connection_error', error)
                })
 
+               connection.on('error', error => {
+                  this.handle('connection_close', error)
+               })
+
                _.assign(this.memory, {
                   connection: connection,
                   reconnects: 0,
                })
 
+               this.emit('connected', this.memory)
                this.transition('assert')
             }, error => {
                this.handle('error', error)
             })
          },
+         connection_close: function () {
+            console.log('connect/connection_close')
+            this.deferAndTransition('disconnect')
+         },
          connection_error: function () {
-            this.transition('reconnect')
+            console.log('connect/connection_error')
+            this.deferAndTransition('disconnect')
          },
          error: function () {
-            this.transition('reconnect')
-         }
+            console.log('connect/error')
+            this.deferAndTransition('disconnect')
+         },
       },
       assert: {
          _onEnter: function () {
+            console.log('assert/enter')
             const channelType = this.config.channel.confirm
                ? 'createConfirmChannel' : 'createChannel'
 
@@ -95,13 +108,83 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
                this.handle('channel_error', error)
             })
          },
+         connection_close: function () {
+            console.log('assert/connection_close')
+            this.deferAndTransition('disconnect')
+         },
          connection_error: function () {
+            console.log('assert/connection_error')
+            this.deferAndTransition('disconnect')
+         },
+         channel_close: function () {
+            console.log('assert/channel_close')
+            this.deferAndTransition('disconnect')
+         },
+         channel_error: function () {
+            console.log('assert/channel_error')
+            this.deferAndTransition('disconnect')
+         },
+      },
+      connected: {
+         _onEnter: function () {
+            console.log('connected/enter')
+           this.emit('ready', this.memory.channel)
+         },
+         connection_close: function () {
+            console.log('connected/connection_close')
+            this.deferAndTransition('disconnect')
+         },
+         connection_error: function () {
+            console.log('connected/connection_error')
+            this.deferAndTransition('disconnect')
+         },
+         channel_close: function () {
+            console.log('connected/channel_close')
+            this.deferAndTransition('disconnect')
+         },
+         channel_error: function () {
+            console.log('connected/channel_error')
+            this.deferAndTransition('disconnect')
+         },
+      },
+      disconnect: {
+         _onEnter: function () {
+            console.log('disconnect/enter', this.priorState)
+            if (this.memory.connection) {
+               this.memory.connection.removeAllListeners()
+            }
+
+            if (this.memory.channel) {
+               this.memory.channel.removeAllListeners()
+            }
+
+            if (this.memory.connection) {
+               this.memory.connection.close()
+            }
+
+            this.emit('disconnected')
+         },
+         '*': function () {
+            console.log('disconnect/*')
+         },
+         error: function () {
+            console.log('disconnect/error')
+            this.transition('reconnect')
+         },
+         connection_error: function () {
+            console.log('disconnect/connection_error')
+            this.transition('reconnect')
+         },
+         connection_close: function () {
+            console.log('disconnect/connection_error')
             this.transition('reconnect')
          },
          channel_close: function () {
+            console.log('disconnect/channel_close')
             this.transition('reconnect')
          },
          channel_error: function (error) {
+            console.log('disconnect/channel_error')
             if (/PRECONDITION-FAILED/i.test(error.message)) {
                return this.emit('error', error)
             }
@@ -109,71 +192,37 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
             this.transition('reconnect')
          }
       },
-      connected: {
-         _onEnter: function () {
-           this.emit('ready', this.memory)
-         },
-         channel_error: function () {
-            this.transition('reconnect')
-         },
-         connection_error: function () {
-            this.transition('reconnect')
-         },
-         channel_close: function () {
-            this.transition('reconnect')
-         }
-      },
       reconnect: {
          _onEnter: function () {
+            console.log('reconnect/enter')
             const reconnects = (this.memory.reconnects || 0) + 1
             const waitTimeMs = Math.min(Math.pow(2, reconnects) * 100, 60 * 1000)
 
-            this.emit('reconnect', {
+            this.emit('reconnect_waiting', {
                reconnects: reconnects,
                wait_time_ms: waitTimeMs
             })
 
             setTimeout(() => {
-               // TODO: Don't transition to connect if stopped
-               _.assign(this.memory, {
-                     reconnects: reconnects,
+               this.emit('reconnecting', {
+                  reconnects: reconnects,
+                  wait_time_ms: waitTimeMs
                })
+
+               _.assign(this.memory, {
+                  reconnects: reconnects,
+               })
+
                this.transition('connect')
             }, waitTimeMs)
          }
       },
-      error: {
-         _onEnter: function (error) {
-            this.cleanHandlers()
-            this.emit('error', error)
-         }
-      },
-      close: {
-         _onEnter: function () {
-            this.cleanHandlers()
-
-            if (this.memory.connection) {
-               this.memory.connection.close()
-            }
-
-            this.emit('close')
-         }
-      }
    },
    open: function () {
       this.handle('open')
    },
    close: function () {
-      this.transition('close')
-   },
-   cleanHandlers: function () {
-      if (this.memory.connection) {
-         this.memory.connection.removeAllListeners()
-      }
-
-      if (this.memory.channel) {
-         this.memory.channel.removeAllListeners()
-      }
+      this.transition('disconnect')
    },
 })
 
@@ -204,26 +253,34 @@ const AmqpManager = function (config) {
 
    this.fsm = new AmqpConnectionFsm(this.config)
 
-   this.fsm.on('ready', state => {
-      this._channel = state.channel
+   this.fsm.on('ready', channel => {
+      this._channel = channel
       this.emit('connected')
    })
 
-   const disconnect = () => {
-      if (this._channel) {
-         this._channel = null
-         this.emit('disconnected')
-      }
-   }
+   this.fsm.on('reconnect_waiting', info => {
+      this.emit('reconnect_waiting', info)
+   })
+
+   this.fsm.on('reconnecting', info => {
+      this.emit('reconnecting', info)
+   })
 
    this.fsm.on('close', () => {
       this.closed = true
-      disconnect()
+      this._channel = null
+      this.emit('disconnected')
    })
 
-   this.fsm.on('reconnect', disconnect)
+   this.fsm.on('disconnected', () => {
+      this._channel = null
+      this.emit('disconnected')
+   })
 
-   this.fsm.on('error', disconnect)
+   this.fsm.on('error', () => {
+      this._channel = null
+      this.emit('error')
+   })
 
    this.started = false
 }
