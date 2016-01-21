@@ -3,6 +3,7 @@ const Util = require('util')
 const EventEmitter = require('events').EventEmitter
 const Machina = require('machina')
 const _ = require('lodash')
+const QueryString = require('querystring')
 
 const assertTopology = function (config, channel) {
    const assertExchanges = () => Promise.all(
@@ -40,10 +41,9 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
       connect: {
          _onEnter: function () {
             const connection = this.config.connection
-            // TODO: Allow for secure connection
-            const amqpUrl = `amqp://${connection.user}:${connection.password}@${connection.host}:${connection.port}/${encodeURIComponent(connection.vhost)}?heartbeat=30`
+            const amqpUrl = `${connection.protocol}://${connection.user}:${connection.password}@${connection.host}:${connection.port}/${encodeURIComponent(connection.vhost)}?${QueryString.stringify(connection.params)}`
 
-            Amqp.connect(amqpUrl)
+            Amqp.connect(amqpUrl, connection.options)
             .then(connection => {
                connection.on('error', error => {
                   this.handle('connection_error', error)
@@ -181,10 +181,25 @@ const AmqpManager = function (config) {
    EventEmitter.call(this)
 
    this.config = _.defaultsDeep(config, {
+      connection: {
+         protocol: 'amqp',
+         user: 'guest',
+         password: 'guest',
+         host: 'localhost',
+         port: 5672,
+         vhost: '/',
+         params: {
+            heartbeat: 30,
+         },
+         options: null,
+      },
       channel: {
          prefetch: 1,
          confirm: true,
-      }
+      },
+      queues: [],
+      exchanges: [],
+      bindings: [],
    })
 
    this.fsm = new AmqpConnectionFsm(this.config)
