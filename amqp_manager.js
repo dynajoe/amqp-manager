@@ -4,6 +4,7 @@ const EventEmitter = require('events').EventEmitter
 const Machina = require('machina')
 const _ = require('lodash')
 const QueryString = require('querystring')
+const Logger = require('./logger')
 
 const assertTopology = function (config, channel) {
    const assertExchanges = () => Promise.all(
@@ -40,7 +41,7 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
       },
       connect: {
          _onEnter: function () {
-            console.log('connect/enter')
+            Logger.info('connect/enter')
             const connection = this.config.connection
             const amqpUrl = `${connection.protocol}://${connection.user}:${connection.password}@${connection.host}:${connection.port}/${encodeURIComponent(connection.vhost)}?${QueryString.stringify(connection.params)}`
 
@@ -66,21 +67,21 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
             })
          },
          connection_close: function () {
-            console.log('connect/connection_close')
+            Logger.info('connect/connection_close')
             this.deferAndTransition('disconnect')
          },
          connection_error: function () {
-            console.log('connect/connection_error')
+            Logger.info('connect/connection_error')
             this.deferAndTransition('disconnect')
          },
          error: function () {
-            console.log('connect/error')
+            Logger.info('connect/error')
             this.deferAndTransition('disconnect')
          },
       },
       assert: {
          _onEnter: function () {
-            console.log('assert/enter')
+            Logger.info('assert/enter')
             const channelType = this.config.channel.confirm
                ? 'createConfirmChannel' : 'createChannel'
 
@@ -109,47 +110,47 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
             })
          },
          connection_close: function () {
-            console.log('assert/connection_close')
+            Logger.info('assert/connection_close')
             this.deferAndTransition('disconnect')
          },
          connection_error: function () {
-            console.log('assert/connection_error')
+            Logger.info('assert/connection_error')
             this.deferAndTransition('disconnect')
          },
          channel_close: function () {
-            console.log('assert/channel_close')
+            Logger.info('assert/channel_close')
             this.deferAndTransition('disconnect')
          },
          channel_error: function () {
-            console.log('assert/channel_error')
+            Logger.info('assert/channel_error')
             this.deferAndTransition('disconnect')
          },
       },
       connected: {
          _onEnter: function () {
-            console.log('connected/enter')
-           this.emit('ready', this.memory.channel)
+            Logger.info('connected/enter')
+            this.emit('ready', this.memory.channel)
          },
          connection_close: function () {
-            console.log('connected/connection_close')
+            Logger.info('connected/connection_close')
             this.deferAndTransition('disconnect')
          },
          connection_error: function () {
-            console.log('connected/connection_error')
+            Logger.info('connected/connection_error')
             this.deferAndTransition('disconnect')
          },
          channel_close: function () {
-            console.log('connected/channel_close')
+            Logger.info('connected/channel_close')
             this.deferAndTransition('disconnect')
          },
          channel_error: function () {
-            console.log('connected/channel_error')
+            Logger.info('connected/channel_error')
             this.deferAndTransition('disconnect')
          },
       },
       disconnect: {
          _onEnter: function () {
-            console.log('disconnect/enter', this.priorState)
+            Logger.info('disconnect/enter', this.priorState)
             if (this.memory.connection) {
                this.memory.connection.removeAllListeners()
             }
@@ -165,26 +166,26 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
             this.emit('disconnected')
          },
          '*': function () {
-            console.log('disconnect/*')
+            Logger.info('disconnect/*')
          },
          error: function () {
-            console.log('disconnect/error')
+            Logger.info('disconnect/error')
             this.transition('reconnect')
          },
          connection_error: function () {
-            console.log('disconnect/connection_error')
+            Logger.info('disconnect/connection_error')
             this.transition('reconnect')
          },
          connection_close: function () {
-            console.log('disconnect/connection_error')
+            Logger.info('disconnect/connection_error')
             this.transition('reconnect')
          },
          channel_close: function () {
-            console.log('disconnect/channel_close')
+            Logger.info('disconnect/channel_close')
             this.transition('reconnect')
          },
          channel_error: function (error) {
-            console.log('disconnect/channel_error')
+            Logger.info('disconnect/channel_error')
             if (/PRECONDITION-FAILED/i.test(error.message)) {
                return this.emit('error', error)
             }
@@ -194,7 +195,7 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
       },
       reconnect: {
          _onEnter: function () {
-            console.log('reconnect/enter')
+            Logger.info('reconnect/enter')
             const reconnects = (this.memory.reconnects || 0) + 1
             const waitTimeMs = Math.min(Math.pow(2, reconnects) * 100, 60 * 1000)
 
@@ -259,10 +260,12 @@ const AmqpManager = function (config) {
    })
 
    this.fsm.on('reconnect_waiting', info => {
+      this._channel = null
       this.emit('reconnect_waiting', info)
    })
 
    this.fsm.on('reconnecting', info => {
+      this._channel = null
       this.emit('reconnecting', info)
    })
 
@@ -310,9 +313,9 @@ AmqpManager.prototype.channel = function () {
    })
 
    const waitChannel = new Promise(resolve => {
-      const onReady = state => {
+      const onReady = channel => {
          this.fsm.off('ready', onReady)
-         resolve(state.channel)
+         resolve(channel)
       }
 
       this.fsm.on('ready', onReady)

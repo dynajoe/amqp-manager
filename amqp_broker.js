@@ -1,26 +1,34 @@
+const Logger = require('./logger')
+
 const AmqpBroker = function (amqpManager, config) {
    this.amqpManager = amqpManager
    this.config = config
 }
 
 AmqpBroker.prototype.publish = function (msg) {
+   Logger.info('broker/publish')
+
    const data = new Buffer(JSON.stringify(msg))
 
    return this.amqpManager.channel()
    .then(ch => {
       return ch.publish(this.config.publish.exchange, this.config.publish.pattern, data, this.config.publish.options)
    })
-   .then(null)
+   .then(msg)
 }
 
 AmqpBroker.prototype.handle = function (callback) {
+   Logger.info('broker/handle')
+
    var removed = false
 
    const onDisconnected = () => {
+      Logger.info('broker/disconnected')
       this.consumerTag = null
    }
 
    const onConnected = () => {
+      Logger.info('broker/connected')
       if (!this.consumerTag && !removed) {
          startConsuming()
       }
@@ -39,9 +47,11 @@ AmqpBroker.prototype.handle = function (callback) {
    const startConsuming = () => {
       this.amqpManager.channel()
       .then(ch => {
-         if (removed) {
+         if (this.consumerTag || removed) {
             return
          }
+
+         Logger.info('broker/startConsuming')
 
          this.consumerTag = ch.consume(this.config.consume.queue, msg => {
             callback({
@@ -63,6 +73,7 @@ AmqpBroker.prototype.handle = function (callback) {
    }
 
    const stopConsuming = () => {
+      Logger.info('broker/stopConsuming')
       removed = true
 
       removeAmqpListeners()
@@ -76,7 +87,8 @@ AmqpBroker.prototype.handle = function (callback) {
    }
 
    addAmqpListeners()
-   startConsuming()
+
+   process.nextTick(startConsuming, 1)
 
    return {
       remove: stopConsuming
