@@ -91,6 +91,26 @@ const RunApp = () => {
    amqp.registerBroker('device.inbound', 'device.inbound.ex', 'device.inbound.q', '')
    amqp.registerBroker('device.sensor', 'device.sensor.ex', 'device.sensor.q', '')
 
+   // amqp.amqpManager.on('error', error => {
+   //    console.log('amqp error', error)
+   // })
+   //
+   // amqp.amqpManager.on('disconnected', () => {
+   //    console.log('amqp disconnected')
+   // })
+   //
+   // amqp.amqpManager.on('connected', () => {
+   //    console.log('amqp connected')
+   // })
+   //
+   // amqp.amqpManager.on('waiting', () => {
+   //    console.log('amqp waiting')
+   // })
+   //
+   // amqp.amqpManager.on('reconnecting', () => {
+   //    console.log('amqp reconnecting')
+   // })
+   //
    amqp.registrar.broker('device.inbound')
    .then(broker => {
       setInterval(() => {
