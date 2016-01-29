@@ -51,10 +51,6 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
                   this.handle('connection_error', error)
                })
 
-               connection.on('error', error => {
-                  this.handle('connection_close', error)
-               })
-
                _.assign(this.memory, {
                   connection: connection,
                   reconnects: 0,
