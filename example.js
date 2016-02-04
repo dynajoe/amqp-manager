@@ -1,11 +1,11 @@
-'use-strict';
+'use strict';
 
-const AmqpBroker = require('./index')
+const AmqpManager = require('./index').AmqpManager
 
 const Config = {
    AMQP_USER: 'guest',
    AMQP_PASSWORD: 'guest',
-   AMQP_HOST: '192.168.99.100',
+   AMQP_HOST: '192.168.99.101',
    AMQP_PORT: '5672',
    AMQP_VHOST: '/',
 }
@@ -86,45 +86,33 @@ const AmqpConfig = {
 }
 
 const RunApp = () => {
-   const amqp = AmqpBroker.configure(AmqpConfig)
+   const amqpManager = new AmqpManager(AmqpConfig)
 
-   amqp.registerBroker('device.inbound', 'device.inbound.ex', 'device.inbound.q', '')
-   amqp.registerBroker('device.sensor', 'device.sensor.ex', 'device.sensor.q', '')
+   let consumerTag = null
 
-   // amqp.amqpManager.on('error', error => {
-   //    console.log('amqp error', error)
-   // })
-   //
-   // amqp.amqpManager.on('disconnected', () => {
-   //    console.log('amqp disconnected')
-   // })
-   //
-   // amqp.amqpManager.on('connected', () => {
-   //    console.log('amqp connected')
-   // })
-   //
-   // amqp.amqpManager.on('waiting', () => {
-   //    console.log('amqp waiting')
-   // })
-   //
-   // amqp.amqpManager.on('reconnecting', () => {
-   //    console.log('amqp reconnecting')
-   // })
-   //
-   amqp.registrar.broker('device.inbound')
-   .then(broker => {
-      setInterval(() => {
-         broker.publish(new Date().toString())
-         .catch(e => {
-            console.log(new Date(), 'Error', e.message)
+   amqpManager.on('connected', () => {
+      amqpManager.channel()
+      .then(ch => {
+         consumerTag = ch.consume('device.inbound.q', msg => {
+            console.log(JSON.parse(msg.content))
+            msg.ack()
          })
-      }, 1000)
-
-      broker.handle(msg => {
-         console.log(msg.data)
-         msg.ack()
       })
    })
+
+   setInterval(() => {
+      amqpManager.channel()
+      .then(ch => {
+         return ch.publish('device.inbound.ex', '', new Buffer(JSON.stringify({
+            date: new Date()
+         })))
+      })
+      .catch(e => {
+         console.log(new Date(), 'Error', e.message)
+      })
+   }, 1000)
+
+   amqpManager.connect()
 }
 
 RunApp()

@@ -1,6 +1,6 @@
 {
   "name": "amqp-broker",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Abstraction on top of AMQP to gracefully handle reconnecting to RabbitMQ server and re-establishing topology.",
   "main": "index.js",
   "repository": {

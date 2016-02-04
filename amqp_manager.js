@@ -286,6 +286,10 @@ const AmqpManager = function (config) {
 
 Util.inherits(AmqpManager, EventEmitter)
 
+AmqpManager.prototype.connect = function () {
+   return this.channel()
+}
+
 AmqpManager.prototype.channel = function () {
    if (this.closed) {
       return Promise.reject(new Error('Connection closed'))
