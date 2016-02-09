@@ -1,5 +1,1 @@
-const AmqpManager = require('./amqp_manager')
-
-module.exports = {
-   AmqpManager: AmqpManager,
-}
+module.exports = require('./amqp_manager')

@@ -1,6 +1,6 @@
 'use strict';
 
-const AmqpManager = require('./index').AmqpManager
+const AmqpManager = require('./index')
 const Logger = require('./logger')
 
 const Config = {

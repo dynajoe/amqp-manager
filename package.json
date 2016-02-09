@@ -1,13 +1,13 @@
 {
-  "name": "amqp-broker",
+  "name": "amqp-manager",
   "version": "0.0.6",
   "description": "Abstraction on top of AMQP to gracefully handle reconnecting to RabbitMQ server and re-establishing topology.",
   "main": "index.js",
   "repository": {
     "type": "git",
-    "url": "http://github.com/joeandaverde/amqp-broker.git"
+    "url": "http://github.com/joeandaverde/amqp-manager.git"
   },
-  "homepage": "http://github.com/joeandaverde/amqp-broker",
+  "homepage": "http://github.com/joeandaverde/amqp-manager",
   "author": "Joe Andaverde",
   "license": "MIT",
   "dependencies": {
