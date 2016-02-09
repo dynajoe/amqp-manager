@@ -1,7 +1,7 @@
 module.exports = {
-   info: (msg) => {
+   info: function () {
       if (process.env.DEBUG) {
-         console.log(msg)
+         console.log(Array.prototype.slice.call(arguments))
       }
    }
 }

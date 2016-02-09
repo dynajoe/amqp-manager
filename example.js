@@ -1,6 +1,7 @@
 'use strict';
 
 const AmqpManager = require('./index').AmqpManager
+const Logger = require('./logger')
 
 const Config = {
    AMQP_USER: 'guest',
@@ -40,7 +41,7 @@ const AmqpConfig = {
       options: { durable: true },
    }],
    queues: [{
-      queue: 'device.inbound.q',
+      queue: 'test.q',
       options: {
          durable: true,
          autoDelete: false,
@@ -72,7 +73,7 @@ const AmqpConfig = {
    }],
    bindings: [{
       exchange: 'device.inbound.ex',
-      queue: 'device.inbound.q',
+      queue: 'test.q',
    }, {
       exchange: 'device.sensor.ex',
       queue: 'device.sensor.q',
@@ -90,25 +91,29 @@ const RunApp = () => {
 
    let consumerTag = null
 
-   amqpManager.on('connected', () => {
-      amqpManager.channel()
+   amqpManager.on('ready', () => {
+      amqpManager.channel('inbound')
       .then(ch => {
-         consumerTag = ch.consume('device.inbound.q', msg => {
+         consumerTag = ch.consume('test.q', msg => {
             console.log(JSON.parse(msg.content))
-            msg.ack()
+            ch.ack(msg)
          })
       })
    })
 
    setInterval(() => {
-      amqpManager.channel()
+      Logger.info('publishing')
+      amqpManager.confirmChannel('outbound')
       .then(ch => {
-         return ch.publish('device.inbound.ex', '', new Buffer(JSON.stringify({
+         ch.publish('device.inbound.ex', '', new Buffer(JSON.stringify({
             date: new Date()
          })))
+
+         ch.waitForConfirms()
       })
       .catch(e => {
-         console.log(new Date(), 'Error', e.message)
+         console.log(new Date(), 'Error', e)
+         console.log(e.stack)
       })
    }, 1000)
 
