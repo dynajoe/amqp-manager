@@ -19,10 +19,6 @@ const AmqpConfig = {
       port: Config.AMQP_PORT,
       vhost: Config.AMQP_VHOST,
    },
-   channel: {
-      confirm: true,
-      prefetch: 1
-   },
    exchanges: [{
       exchange: 'device.inbound.ex',
       type: 'fanout',
@@ -94,6 +90,8 @@ const RunApp = () => {
    amqpManager.on('ready', () => {
       amqpManager.channel('inbound')
       .then(ch => {
+         ch.prefetch(1)
+
          consumerTag = ch.consume('test.q', msg => {
             console.log(JSON.parse(msg.content))
             ch.ack(msg)

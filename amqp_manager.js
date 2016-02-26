@@ -38,10 +38,6 @@ const AmqpManager = function (config) {
          },
          options: null,
       },
-      channel: {
-         prefetch: 1,
-         confirm: true,
-      },
       queues: [],
       exchanges: [],
       bindings: [],
@@ -54,8 +50,6 @@ const AmqpManager = function (config) {
       Logger.info('manager/topology')
       connection.createChannel()
       .then(channel => {
-         channel.prefetch(this.config.channel.prefetch)
-
          return assertTopology(this.config, channel)
          .then(() => {
             this._channels = {}
