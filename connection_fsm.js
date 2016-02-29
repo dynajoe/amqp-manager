@@ -25,10 +25,10 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
       connect: {
          _onEnter: function () {
             Logger.info('connect/enter')
-            const connection = this.config.connection
-            const amqpUrl = `${connection.protocol}://${connection.user}:${connection.password}@${connection.host}:${connection.port}/${encodeURIComponent(connection.vhost)}?${QueryString.stringify(connection.params)}`
+            const conn = this.config.connection
+            const amqpUrl = `${conn.protocol}://${conn.user}:${conn.password}@${conn.host}:${conn.port}/${encodeURIComponent(conn.vhost)}?${QueryString.stringify(conn.params)}`
 
-            Amqp.connect(amqpUrl, connection.options)
+            Amqp.connect(amqpUrl, conn.options)
             .then(connection => {
                _.assign(this.memory, {
                   connection: connection,
