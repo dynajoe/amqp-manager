@@ -6,7 +6,7 @@ const Logger = require('./logger')
 const Config = {
    AMQP_USER: 'guest',
    AMQP_PASSWORD: 'guest',
-   AMQP_HOST: '192.168.99.101',
+   AMQP_HOST: '127.0.0.1',
    AMQP_PORT: '5672',
    AMQP_VHOST: '/',
 }
@@ -20,19 +20,11 @@ const AmqpConfig = {
       vhost: Config.AMQP_VHOST,
    },
    exchanges: [{
-      exchange: 'device.inbound.ex',
+      exchange: 'example.ex',
       type: 'fanout',
       options: { durable: true },
    }, {
-      exchange: 'device.inbound.dead.ex',
-      type: 'fanout',
-      options: { durable: true },
-   }, {
-      exchange: 'device.sensor.ex',
-      type: 'fanout',
-      options: { durable: true },
-   }, {
-      exchange: 'device.sensor.dead.ex',
+      exchange: 'example.dead.ex',
       type: 'fanout',
       options: { durable: true },
    }],
@@ -42,25 +34,10 @@ const AmqpConfig = {
          durable: true,
          autoDelete: false,
          exclusive: false,
-         deadLetterExchange: 'device.inbound.dead.ex',
+         deadLetterExchange: 'example.dead.ex',
       }
    }, {
-      queue: 'device.sensor.q',
-      options: {
-         durable: true,
-         autoDelete: false,
-         exclusive: false,
-         deadLetterExchange: 'device.sensor.dead.ex',
-      }
-   }, {
-      queue: 'device.inbound.dead.q',
-      options: {
-         durable: true,
-         autoDelete: false,
-         exclusive: false,
-      }
-   }, {
-      queue: 'device.sensor.dead.q',
+      queue: 'example.dead.q',
       options: {
          durable: true,
          autoDelete: false,
@@ -68,17 +45,11 @@ const AmqpConfig = {
       }
    }],
    bindings: [{
-      exchange: 'device.inbound.ex',
+      exchange: 'example.ex',
       queue: 'test.q',
    }, {
-      exchange: 'device.sensor.ex',
-      queue: 'device.sensor.q',
-   }, {
-      exchange: 'device.inbound.dead.ex',
-      queue: 'device.inbound.dead.q',
-   }, {
-      exchange: 'device.sensor.dead.ex',
-      queue: 'device.sensor.dead.q',
+      exchange: 'example.dead.ex',
+      queue: 'example.dead.q',
    }]
 }
 
@@ -94,7 +65,7 @@ const RunApp = () => {
 
          consumerTag = ch.consume('test.q', msg => {
             console.log(JSON.parse(msg.content))
-            ch.ack(msg)
+            ch.reject(msg, false)
          })
       })
    })
@@ -103,7 +74,7 @@ const RunApp = () => {
       Logger.info('publishing')
       amqpManager.confirmChannel('outbound')
       .then(ch => {
-         ch.publish('device.inbound.ex', '', new Buffer(JSON.stringify({
+         ch.publish('example.ex', '', new Buffer(JSON.stringify({
             date: new Date()
          })))
 
