@@ -3,57 +3,22 @@ import { Logger } from './logger'
 import { AmqpConnectionFsm } from './connection_fsm'
 import * as _ from 'lodash'
 import * as Amqp from 'amqplib'
-
-export interface AmqpExchangeConfig {
-   exchange: string
-   type: string
-   options: Amqp.Options.AssertExchange
-}
-
-export interface AmqpQueueConfig {
-   queue: string
-   options: Amqp.Options.AssertQueue
-}
-
-export interface AmqpBindingConfig {
-   exchange: string
-   queue: string
-}
-
-export interface AmqpConnectionConfig {
-   user: string
-   password: string
-   host: string
-   port: number
-   vhost: string
-   protocol?: string
-   params?: {
-      heartbeat: number
-   }
-   options: null
-}
-
-export interface AmqpConfig {
-   connection: AmqpConnectionConfig
-   exchanges: AmqpExchangeConfig[]
-   queues: AmqpQueueConfig[]
-   bindings: AmqpBindingConfig[]
-}
+import * as T from './types'
 
 export class AmqpManager extends EventEmitter {
-   private config: AmqpConfig
-   private fsm: any
+   private config: T.AmqpConfig
    private started: boolean
    private closed: boolean
-   private waitReady: Promise<any>
-   private _channels: {}
-   private _connection: null
+   private waitReady: Promise<void>
+   private fsm: any
+   private connection: Amqp.Connection
+   private channels: _.Dictionary<Amqp.Channel | Amqp.ConfirmChannel>
 
-   constructor(config: AmqpConfig) {
+   constructor(config: T.AmqpConfig) {
       super()
 
-      this._channels = {}
-      this._connection = null
+      this.channels = {}
+      this.connection = null
       this.config = _.defaultsDeep(config, {
          connection: {
             protocol: 'amqp',
@@ -80,8 +45,8 @@ export class AmqpManager extends EventEmitter {
          connection.createChannel().then(
             channel => {
                return this._assertTopology(this.config, channel).then(() => {
-                  this._channels = {}
-                  this._connection = connection
+                  this.channels = {}
+                  this.connection = connection
                   this.emit('ready', connection)
                })
             },
@@ -92,8 +57,8 @@ export class AmqpManager extends EventEmitter {
       })
 
       this.fsm.on('disconnect', () => {
-         this._connection = null
-         this._channels = {}
+         this.connection = null
+         this.channels = {}
       })
 
       this.started = false
@@ -107,15 +72,28 @@ export class AmqpManager extends EventEmitter {
       }
    }
 
-   async confirmChannel(name): Promise<Amqp.ConfirmChannel> {
-      return this._channel('createConfirmChannel', name)
+   async confirmChannel(name: string): Promise<Amqp.ConfirmChannel> {
+      return <Amqp.ConfirmChannel>await this._channel('createConfirmChannel', name)
    }
 
-   async channel(name): Promise<Amqp.ConfirmChannel> {
-      return this._channel('createChannel', name)
+   async channel(name: string): Promise<Amqp.Channel> {
+      return <Amqp.Channel>await this._channel('createChannel', name)
    }
 
-   async _channel(type, name): Promise<any> {
+   async close(): Promise<void> {
+      return new Promise<void>(resolve => {
+         this.fsm.close()
+
+         const onClosed = () => {
+            this.fsm.off('close', onClosed)
+            resolve()
+         }
+
+         this.fsm.on('close', onClosed)
+      })
+   }
+
+   private async _channel(type: string, name: string): Promise<Amqp.ConfirmChannel | Amqp.Channel> {
       if (this.closed) {
          throw new Error('Connection closed')
       }
@@ -123,20 +101,20 @@ export class AmqpManager extends EventEmitter {
       const getChannel = connection => {
          const key = `${type}:${name || 'default'}`
 
-         if (this._channels[key]) {
-            return Promise.resolve(this._channels[key])
+         if (this.channels[key]) {
+            return Promise.resolve(this.channels[key])
          }
 
          Logger.info('amqpmanager/new-channel', type, name)
 
          return connection[type]().then(ch => {
-            this._channels[key] = ch
+            this.channels[key] = ch
             return ch
          })
       }
 
-      if (this._connection) {
-         return getChannel(this._connection)
+      if (this.connection) {
+         return getChannel(this.connection)
       }
 
       this.connect()
@@ -166,28 +144,9 @@ export class AmqpManager extends EventEmitter {
       return Promise.race([timeout, this.waitReady.then(c => getChannel(c))])
    }
 
-   async close(): Promise<void> {
-      return new Promise<void>(resolve => {
-         this.fsm.close()
-
-         const onClosed = () => {
-            this.fsm.off('close', onClosed)
-            resolve()
-         }
-
-         this.fsm.on('close', onClosed)
-      })
-   }
-
-   _assertTopology(config, channel): Promise<any> {
-      const assertExchanges = () => Promise.all(config.exchanges.map(e => channel.assertExchange(e.exchange, e.type, e.options)))
-
-      const assertQueues = () => Promise.all(config.queues.map(q => channel.assertQueue(q.queue, q.options)))
-
-      const bindQueues = () => Promise.all(config.bindings.map(b => channel.bindQueue(b.queue, b.exchange, b.pattern)))
-
-      return assertExchanges()
-         .then(assertQueues)
-         .then(bindQueues)
+   private async _assertTopology(config, channel): Promise<void> {
+      await Promise.all(_.map(config.exchanges, e => channel.assertExchange(e.exchange, e.type, e.options)))
+      await Promise.all(_.map(config.queues, q => channel.assertQueue(q.queue, q.options)))
+      await Promise.all(_.map(config.bindings, b => channel.bindQueue(b.queue, b.exchange, b.pattern)))
    }
 }

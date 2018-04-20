@@ -1,14 +1,15 @@
 import { Logger } from './logger'
 import * as _ from 'lodash'
+import * as Amqp from 'amqplib'
+import * as T from './types'
 
-const Amqp = require('amqplib')
 const Machina = require('machina')
 const QueryString = require('querystring')
 
 export const AmqpConnectionFsm = Machina.Fsm.extend({
    namespace: 'amqp-connection',
    initialState: 'uninitialized',
-   initialize: function(config) {
+   initialize: function(config: T.AmqpConfig) {
       this.config = config
       this.memory = {}
    },
@@ -26,12 +27,14 @@ export const AmqpConnectionFsm = Machina.Fsm.extend({
       connect: {
          _onEnter: function() {
             Logger.info('connect/enter')
-            const conn = this.config.connection
+            const config: T.AmqpConfig = this.config
+            const conn = config.connection
+
             const amqpUrl = `${conn.protocol}://${conn.user}:${conn.password}@${conn.host}:${conn.port}/${encodeURIComponent(
                conn.vhost
             )}?${QueryString.stringify(conn.params)}`
 
-            Amqp.connect(amqpUrl, conn.options).then(
+            Amqp.connect(amqpUrl, conn.socket_options).then(
                connection => {
                   _.assign(this.memory, {
                      connection: connection,
