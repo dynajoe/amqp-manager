@@ -1,7 +1,6 @@
 'use strict';
 
-const AmqpManager = require('./index')
-const Logger = require('./logger')
+const AmqpManager = require('./dist/index').AmqpManager
 
 const Config = {
    AMQP_USER: 'guest',
@@ -71,7 +70,8 @@ const RunApp = () => {
    })
 
    setInterval(() => {
-      Logger.info('publishing')
+      console.log('publishing')
+
       amqpManager.confirmChannel('outbound')
       .then(ch => {
          ch.publish('example.ex', '', new Buffer(JSON.stringify({

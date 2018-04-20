@@ -1,52 +1,57 @@
+import { Logger } from './logger'
+import * as _ from 'lodash'
+
 const Amqp = require('amqplib')
 const Machina = require('machina')
 const QueryString = require('querystring')
-const Logger = require('./logger')
-const _ = require('lodash')
 
-const AmqpConnectionFsm = Machina.Fsm.extend({
+export const AmqpConnectionFsm = Machina.Fsm.extend({
    namespace: 'amqp-connection',
    initialState: 'uninitialized',
-   initialize: function (config) {
+   initialize: function(config) {
       this.config = config
       this.memory = {}
    },
    states: {
       uninitialized: {
-         '*': function () {
+         '*': function() {
             this.deferAndTransition('idle')
          },
       },
       idle: {
-         open: function () {
+         open: function() {
             this.transition('connect')
          },
       },
       connect: {
-         _onEnter: function () {
+         _onEnter: function() {
             Logger.info('connect/enter')
             const conn = this.config.connection
-            const amqpUrl = `${conn.protocol}://${conn.user}:${conn.password}@${conn.host}:${conn.port}/${encodeURIComponent(conn.vhost)}?${QueryString.stringify(conn.params)}`
+            const amqpUrl = `${conn.protocol}://${conn.user}:${conn.password}@${conn.host}:${conn.port}/${encodeURIComponent(
+               conn.vhost
+            )}?${QueryString.stringify(conn.params)}`
 
-            Amqp.connect(amqpUrl, conn.options)
-            .then(connection => {
-               _.assign(this.memory, {
-                  connection: connection,
-                  reconnects: 0,
-               })
+            Amqp.connect(amqpUrl, conn.options).then(
+               connection => {
+                  _.assign(this.memory, {
+                     connection: connection,
+                     reconnects: 0,
+                  })
 
-               this.transition('connected')
-            }, error => {
-               this.handle('error', error)
-            })
+                  this.transition('connected')
+               },
+               error => {
+                  this.handle('error', error)
+               }
+            )
          },
-         error: function () {
+         error: function() {
             Logger.info('connect/error')
             this.deferAndTransition('disconnect')
          },
       },
       connected: {
-         _onEnter: function () {
+         _onEnter: function() {
             Logger.info('connected/enter')
 
             this.memory.connection.on('error', error => {
@@ -59,17 +64,17 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
 
             this.emit('connected', this.memory.connection)
          },
-         connection_error: function (error) {
+         connection_error: function(error) {
             Logger.info('connected/connection_error', error)
             this.deferAndTransition('disconnect')
          },
-         connection_close: function (error) {
+         connection_close: function(error) {
             Logger.info('connected/connection_close', error)
             this.deferAndTransition('disconnect')
          },
       },
       disconnect: {
-         _onEnter: function () {
+         _onEnter: function() {
             Logger.info('disconnect/enter')
 
             if (this.memory.connection) {
@@ -88,20 +93,20 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
          },
       },
       reconnect: {
-         _onEnter: function () {
+         _onEnter: function() {
             Logger.info('reconnect/enter')
             const reconnects = (this.memory.reconnects || 0) + 1
             const waitTimeMs = Math.min(Math.pow(2, reconnects) * 100, 60 * 1000)
 
             this.emit('reconnect_waiting', {
                reconnects: reconnects,
-               wait_time_ms: waitTimeMs
+               wait_time_ms: waitTimeMs,
             })
 
             setTimeout(() => {
                this.emit('reconnecting', {
                   reconnects: reconnects,
-                  wait_time_ms: waitTimeMs
+                  wait_time_ms: waitTimeMs,
                })
 
                _.assign(this.memory, {
@@ -110,16 +115,14 @@ const AmqpConnectionFsm = Machina.Fsm.extend({
 
                this.transition('connect')
             }, waitTimeMs)
-         }
+         },
       },
    },
-   open: function () {
+   open: function() {
       this.handle('open')
    },
-   close: function () {
+   close: function() {
       this.closed = true
       this.transition('disconnect')
    },
 })
-
-module.exports = AmqpConnectionFsm
