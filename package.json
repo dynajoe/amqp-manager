@@ -1,6 +1,6 @@
 {
    "name": "amqp-manager",
-   "version": "0.0.9",
+   "version": "0.1.0",
    "description": "Abstraction on top of AMQP to gracefully handle reconnecting to RabbitMQ server and re-establishing topology.",
    "main": "dist/index.js",
    "typings": "dist/index.d.ts",
