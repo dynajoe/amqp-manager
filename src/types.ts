@@ -17,26 +17,16 @@ export interface AmqpBindingConfig {
    pattern: string
 }
 
-export interface AmqpConnectionConfig {
-   user: string
-   password: string
-   host: string
-   port: number
-   vhost: string
-   protocol?: string
-   params?: {
-      heartbeat: number
-   }
-   socket_options?: {
-      cert: Buffer
-      key: Buffer
-      passphrase: string
-      ca: Buffer[]
-   }
-}
-
 export interface AmqpConfig {
-   connection: AmqpConnectionConfig
+   amqplib: {
+      connection: Amqp.Options.Connect
+      socket_options?: {
+         cert: Buffer
+         key: Buffer
+         passphrase: string
+         ca: Buffer[]
+      }
+   }
    exchanges: AmqpExchangeConfig[]
    queues: AmqpQueueConfig[]
    bindings: AmqpBindingConfig[]

@@ -5,7 +5,6 @@ import Debug from 'debug'
 
 const Log = Debug('amqp-manager:connection')
 const Machina = require('machina')
-const QueryString = require('querystring')
 
 export const AmqpConnectionFsm = Machina.Fsm.extend({
    namespace: 'amqp-connection',
@@ -29,13 +28,9 @@ export const AmqpConnectionFsm = Machina.Fsm.extend({
          _onEnter: function() {
             Log('connect/enter')
             const config: T.AmqpConfig = this.config
-            const conn = config.connection
+            const amqplib_config = config.amqplib
 
-            const amqpUrl = `${conn.protocol}://${conn.user}:${conn.password}@${conn.host}:${conn.port}/${encodeURIComponent(
-               conn.vhost
-            )}?${QueryString.stringify(conn.params)}`
-
-            Amqp.connect(amqpUrl, conn.socket_options).then(
+            Amqp.connect(amqplib_config.connection, amqplib_config.socket_options).then(
                connection => {
                   _.assign(this.memory, {
                      connection: connection,
