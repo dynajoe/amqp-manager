@@ -1,11 +1,10 @@
 import * as Amqp from 'amqplib'
 import { AmqpManager } from './amqp_manager'
+import * as T from './types'
 import * as _ from 'lodash'
 import Debug from 'debug'
 
 const Log = Debug('amqp-manager:pubsub')
-
-const HANDLE_MESSAGE_TIMEOUT_MS = 60000
 
 /*
    In the event of a synchronous unhandled exception we want to Reject the
@@ -16,27 +15,29 @@ const HANDLE_MESSAGE_TIMEOUT_MS = 60000
 
    Otherwise, unhandled exceptions will propagate and kill the AMQP connection.
 */
-function NewMessageHandler<T>(
-   ch: Amqp.Channel | Amqp.ConfirmChannel,
+function newMessageHandler<T>(
+   channel: Amqp.Channel | Amqp.ConfirmChannel,
    amqp_manager: AmqpManager,
-   consume_options: SubscribeOptions<T>
+   subscribe_options: T.SubscribeOptions<T>
 ): (m: Amqp.ConsumeMessage | null) => void {
    return async (message: Amqp.ConsumeMessage | null) => {
-      Log('message_received')
+      if (Log.enabled) {
+         Log('message_received [%o]', _.isNil(message) ? null : { ...message, content: `<<${message.content.length} bytes>>` })
+      }
 
       if (_.isNil(message)) {
          return
       }
 
-      const parsed_message = await consume_options.parser(message)
-
       try {
-         const input = AsAckInput(ch, amqp_manager, message, parsed_message, consume_options)
+         const parsed_message = await subscribe_options.parser(message)
+
+         const input = asAckInput(channel, amqp_manager, message, parsed_message, subscribe_options)
 
          let timeout_handle: any
 
          const timeout = new Promise(resolve => {
-            timeout_handle = setTimeout(() => resolve(), HANDLE_MESSAGE_TIMEOUT_MS)
+            timeout_handle = setTimeout(() => resolve(), _.defaultTo(subscribe_options.handler_timeout_ms, 60000))
          })
 
          const onComplete = async () => {
@@ -48,7 +49,7 @@ function NewMessageHandler<T>(
          }
 
          try {
-            await Promise.race([consume_options.handler(input, message, ch), timeout])
+            await Promise.race([subscribe_options.handler(input), timeout])
 
             await onComplete()
          } catch (error) {
@@ -56,20 +57,71 @@ function NewMessageHandler<T>(
             throw error
          }
       } catch (error) {
-         if (_.isNil(consume_options.retry_queue)) {
-            ch.reject(message, false)
+         if (_.isNil(subscribe_options.retry_queue)) {
+            channel.reject(message, false)
          } else {
-            await RetryOrBackoff(ch, amqp_manager, message, consume_options)
+            await retryOrBackoff(channel, amqp_manager, subscribe_options, message)
          }
       }
    }
 }
 
-async function RetryOrBackoff<T>(
-   ch: Amqp.Channel | Amqp.ConfirmChannel,
+function asAckInput<T>(
+   channel: Amqp.Channel | Amqp.ConfirmChannel,
    amqp_manager: AmqpManager,
    message: Amqp.Message,
-   queue_config: SubscribeOptions<T>
+   parsed_message: T,
+   subscribe_options: T.SubscribeOptions<T>
+): T.AckInput<T> {
+   let is_message_handled = false
+
+   return {
+      message: parsed_message,
+      raw: message,
+      isHandled: () => is_message_handled,
+      async ack() {
+         if (is_message_handled) {
+            return
+         }
+
+         is_message_handled = true
+
+         channel.ack(message, false)
+      },
+      async nack() {
+         if (is_message_handled) {
+            return
+         }
+
+         is_message_handled = true
+
+         if (_.isNil(subscribe_options.retry_queue)) {
+            channel.nack(message)
+         } else {
+            await retryOrBackoff(channel, amqp_manager, subscribe_options, message)
+         }
+      },
+      async reject() {
+         if (is_message_handled) {
+            return
+         }
+
+         is_message_handled = true
+
+         if (_.isNil(subscribe_options.retry_queue)) {
+            channel.reject(message, false)
+         } else {
+            await retryOrBackoff(channel, amqp_manager, subscribe_options, message)
+         }
+      },
+   }
+}
+
+async function retryOrBackoff<T>(
+   channel: Amqp.Channel | Amqp.ConfirmChannel,
+   amqp_manager: AmqpManager,
+   queue_config: T.SubscribeOptions<T>,
+   message: Amqp.Message
 ): Promise<any> {
    const message_retry_count: number = _.get(message, 'properties.headers.x-death[0].count', 0)
 
@@ -92,105 +144,14 @@ async function RetryOrBackoff<T>(
             queue: queue_config.dead_letter_queue,
          })
       } finally {
-         ch.ack(message)
+         channel.ack(message)
       }
    } else {
-      ch.nack(message, false, false)
+      channel.nack(message, false, false)
    }
 }
 
-function AsAckInput<T>(
-   channel: Amqp.Channel | Amqp.ConfirmChannel,
-   amqp_manager: AmqpManager,
-   message: Amqp.Message,
-   parsed_message: T,
-   subscribe_options: SubscribeOptions<T>
-): AckInput<T> {
-   let handled = false
-
-   return {
-      message: parsed_message,
-      isHandled: () => handled,
-      async ack() {
-         if (handled) {
-            return
-         }
-
-         handled = true
-
-         channel.ack(message, false)
-      },
-      async nack() {
-         if (handled) {
-            return
-         }
-
-         handled = true
-
-         if (_.isNil(subscribe_options.retry_queue)) {
-            channel.nack(message)
-         } else {
-            await RetryOrBackoff(channel, amqp_manager, message, subscribe_options)
-         }
-      },
-      async reject() {
-         if (handled) {
-            return
-         }
-
-         handled = true
-
-         if (_.isNil(subscribe_options.retry_queue)) {
-            channel.reject(message, false)
-         } else {
-            await RetryOrBackoff(channel, amqp_manager, message, subscribe_options)
-         }
-      },
-   }
-}
-
-export interface SubscribeOptions<T> {
-   prefetch_count: number
-   queue: string
-   channel_name: string
-   retry_queue: string
-   dead_letter_queue: string
-   dead_letter_exchange: string
-   max_retry_count: number
-   parser: Parser<T>
-   handler: Handler<T>
-   onError(error: any): void
-}
-
-export interface AckInput<T> {
-   message: T
-   ack(): Promise<void>
-   nack(): Promise<void>
-   reject(): Promise<void>
-   isHandled(): boolean
-}
-
-export interface Parser<T> {
-   (message: Amqp.Message): Promise<T>
-}
-
-export interface Handler<T> {
-   (input: AckInput<T>, raw_message: Amqp.Message, channel: Amqp.Channel): Promise<void>
-}
-
-export interface Subscription {
-   cancel(): Promise<void>
-}
-
-export interface PublishOptions {
-   exchange: string
-   queue?: string
-   confirm: boolean
-   data: Buffer
-   amqp_options?: Amqp.Options.Publish
-}
-
-export function subscribe<T>(amqp_manager: AmqpManager, subscribe_options: SubscribeOptions<T>): Subscription {
+export function subscribe<T>(amqp_manager: AmqpManager, subscribe_options: T.SubscribeOptions<T>): T.Subscription {
    if (Log.enabled) {
       Log('subscribe [%o]', subscribe_options)
    }
@@ -207,7 +168,7 @@ export function subscribe<T>(amqp_manager: AmqpManager, subscribe_options: Subsc
 
          await channel.prefetch(subscribe_options.prefetch_count)
 
-         const consume_reply = await channel.consume(queue, NewMessageHandler<T>(channel, amqp_manager, subscribe_options))
+         const consume_reply = await channel.consume(queue, newMessageHandler<T>(channel, amqp_manager, subscribe_options))
 
          consumer_tag = consume_reply.consumerTag
       } catch (error) {
@@ -227,7 +188,7 @@ export function subscribe<T>(amqp_manager: AmqpManager, subscribe_options: Subsc
    }
 }
 
-export async function publish(amqp_manager: AmqpManager, publish_options: PublishOptions): Promise<void> {
+export async function publish(amqp_manager: AmqpManager, publish_options: T.PublishOptions): Promise<void> {
    if (Log.enabled) {
       Log('publish [%o]', { ...publish_options, data: `<<${publish_options.data.length} bytes>>` })
    }

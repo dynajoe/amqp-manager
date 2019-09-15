@@ -31,3 +31,46 @@ export interface AmqpConfig {
    queues: AmqpQueueConfig[]
    bindings: AmqpBindingConfig[]
 }
+
+export interface SubscribeOptions<T> {
+   prefetch_count: number
+   queue: string
+   channel_name: string
+   retry_queue: string
+   dead_letter_queue: string
+   dead_letter_exchange: string
+   max_retry_count: number
+   handler_timeout_ms: number
+   handler: Handler<T>
+   parser: Parser<T>
+   onError(error: any): void
+}
+
+export interface AckInput<T> {
+   message: T
+   raw: Amqp.ConsumeMessage
+   ack(): Promise<void>
+   nack(): Promise<void>
+   reject(): Promise<void>
+   isHandled(): boolean
+}
+
+export interface Parser<T> {
+   (message: Amqp.Message): Promise<T>
+}
+
+export interface Handler<T> {
+   (input: AckInput<T>): Promise<void>
+}
+
+export interface Subscription {
+   cancel(): Promise<void>
+}
+
+export interface PublishOptions {
+   exchange: string
+   queue?: string
+   confirm: boolean
+   data: Buffer
+   amqp_options?: Amqp.Options.Publish
+}

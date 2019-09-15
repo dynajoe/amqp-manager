@@ -1,24 +1,36 @@
 import { AmqpManager, publish } from '../../'
 import { AmqpConfig } from './config'
+import * as Minimist from 'minimist'
+import * as _ from 'lodash'
+import * as Debug from 'debug'
 
-async function Main() {
+const Log = Debug('example')
+
+async function Main(argv: Minimist.ParsedArgs) {
    const amqp_manager = new AmqpManager(AmqpConfig)
+
+   const config = {
+      rate: _.defaultTo(argv['rate'], 1),
+      confirm: Boolean(_.defaultTo(argv['confirm'], 'true')),
+   }
+
+   Log('Publisher Configuration: [%o]', config)
 
    setInterval(async () => {
       try {
          const data = { key: Date.now().toString() }
 
          await publish(amqp_manager, {
-            confirm: true,
+            confirm: config.confirm,
             data: Buffer.from(JSON.stringify(data)),
             exchange: 'example.ex',
          })
 
-         console.log('Published ', data)
+         Log('Published [%o]', data)
       } catch (error) {
-         console.log(error)
+         Log('Error', error)
       }
-   }, 1000)
+   }, Math.floor(1000 / config.rate))
 }
 
-Main()
+Main(Minimist(process.argv.slice(2)))
