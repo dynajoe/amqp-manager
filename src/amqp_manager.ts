@@ -47,7 +47,13 @@ export class AmqpManager extends EventEmitter {
          Log('topology')
          connection.createChannel().then(
             async channel => {
-               await this._assertTopology(this.config, channel)
+               try {
+                  await this.assertTopology(this.config, channel)
+               } catch (error) {
+                  Log('topology_error', connection)
+                  throw error
+               }
+
                this.channels = {}
                this.connection = connection
                this.emit('ready', connection)
@@ -56,6 +62,10 @@ export class AmqpManager extends EventEmitter {
                this.emit('error', error)
             }
          )
+      })
+
+      this.fsm.on('fatal', () => {
+         this.close()
       })
 
       this.fsm.on('disconnect', () => {
@@ -83,6 +93,8 @@ export class AmqpManager extends EventEmitter {
    }
 
    async close(): Promise<void> {
+      this.closed = true
+
       return new Promise<void>(resolve => {
          this.fsm.close()
 
@@ -145,7 +157,7 @@ export class AmqpManager extends EventEmitter {
       return Promise.race([timeout, this.waitReady.then(c => getChannel(c))])
    }
 
-   private async _assertTopology(config: T.AmqpConfig, channel: Amqp.Channel): Promise<void> {
+   private async assertTopology(config: T.AmqpConfig, channel: Amqp.Channel): Promise<void> {
       await Promise.all(_.map(config.exchanges, e => channel.assertExchange(e.exchange, e.type, e.options)))
       await Promise.all(_.map(config.queues, q => channel.assertQueue(q.queue, q.options)))
       await Promise.all(_.map(config.bindings, b => channel.bindQueue(b.queue, b.exchange, b.pattern)))

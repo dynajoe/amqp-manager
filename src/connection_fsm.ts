@@ -68,13 +68,33 @@ export const AmqpConnectionFsm = Machina.Fsm.extend({
 
             this.emit('connected', this.memory.connection)
          },
-         connection_error: function(error: Error) {
+         connection_error: function(error: Error & { code: number }) {
             Log('connected/connection_error', error)
-            this.deferAndTransition('disconnect')
+
+            if (error.code === 406) {
+               this.deferAndTransition('fatal')
+            } else {
+               this.deferAndTransition('disconnect')
+            }
          },
          connection_close: function(error: Error) {
             Log('connected/connection_close', error)
             this.deferAndTransition('disconnect')
+         },
+      },
+      fatal: {
+         _onEnter: function() {
+            Log('fatal/enter')
+
+            if (this.memory.connection) {
+               this.memory.connection.removeAllListeners()
+            }
+
+            if (this.memory.connection) {
+               this.memory.connection.close()
+            }
+
+            this.emit('fatal')
          },
       },
       disconnect: {
