@@ -44,7 +44,7 @@ export class AmqpManager extends EventEmitter {
 
       // Re-establish the topology
       this.fsm.on('connected', (connection: Amqp.Connection) => {
-         Log('manager/topology')
+         Log('topology')
          connection.createChannel().then(
             async channel => {
                await this._assertTopology(this.config, channel)
@@ -68,7 +68,7 @@ export class AmqpManager extends EventEmitter {
 
    connect(): void {
       if (!this.started) {
-         Log('amqpmanager/connect')
+         Log('connect')
          this.started = true
          this.fsm.open({ config: this.config })
       }
@@ -107,7 +107,7 @@ export class AmqpManager extends EventEmitter {
             return Promise.resolve(this.channels[key])
          }
 
-         Log('amqpmanager/new-channel', type, name)
+         Log('new-channel', type, name)
 
          this.channels[key] = await connection[type]()
 
@@ -121,7 +121,7 @@ export class AmqpManager extends EventEmitter {
       this.connect()
 
       const timeout = new Promise<never>((_, reject) => {
-         Log('amqpmanager/wait-timeout')
+         Log('wait-timeout')
 
          setTimeout(() => {
             reject(new Error('Channel Timeout'))
@@ -130,7 +130,7 @@ export class AmqpManager extends EventEmitter {
 
       if (!this.waitReady) {
          this.waitReady = new Promise<Amqp.Connection>(resolve => {
-            Log('amqpmanager/wait-ready')
+            Log('wait-ready')
 
             const onReady = (connection: Amqp.Connection) => {
                this.removeListener('ready', onReady)
