@@ -79,7 +79,7 @@ const AmqpConfig = {
 
 const RunApp = async () => {
    const amqp_manager = new AmqpManager(AmqpConfig)
-   const messages_in_flight = {}
+   const messages_in_flight: _.Dictionary<{ key: string }> = {}
 
    subscribe(amqp_manager, {
       queue: 'test.q',
@@ -88,16 +88,12 @@ const RunApp = async () => {
       retry_queue: 'example.retry.q',
       dead_letter_exchange: 'example.dead.ex',
       dead_letter_queue: 'example.dead.q',
-      max_retry_count: 0,
+      max_retry_count: 3,
       onError: error => {
          console.log(error)
       },
       handler: async (input: AckInput<{ key: string }>) => {
-         if (Math.random() < 0.5) {
-            await input.reject()
-         } else {
-            await input.ack()
-         }
+         await input.nack()
 
          if (messages_in_flight[input.message.key] == null) {
             console.log('Key not found', input.message.key)
@@ -118,15 +114,10 @@ const RunApp = async () => {
             confirm: true,
             data: Buffer.from(JSON.stringify(data)),
             exchange: 'example.ex',
-            amqp_options: null,
          })
       } catch (error) {
          console.log(error)
       }
-   }, 10)
-
-   setInterval(() => {
-      console.log('Messages in flight', Object.keys(messages_in_flight).length)
    }, 1000)
 }
 

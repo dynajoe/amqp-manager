@@ -5,7 +5,7 @@ import * as Amqp from 'amqplib'
 import * as T from './types'
 import Debug from 'debug'
 
-const Log = Debug('manager')
+const Log = Debug('amqp-manager:manager')
 
 export class AmqpManager extends EventEmitter {
    private config: T.AmqpConfig

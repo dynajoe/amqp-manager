@@ -3,7 +3,7 @@ import * as Amqp from 'amqplib'
 import * as T from './types'
 import Debug from 'debug'
 
-const Log = Debug('manager')
+const Log = Debug('amqp-manager:connection')
 const Machina = require('machina')
 const QueryString = require('querystring')
 

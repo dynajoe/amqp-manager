@@ -1,6 +1,9 @@
 import * as Amqp from 'amqplib'
 import { AmqpManager } from './amqp_manager'
 import * as _ from 'lodash'
+import Debug from 'debug'
+
+const Log = Debug('amqp-manager:pubsub')
 
 const HANDLE_MESSAGE_TIMEOUT_MS = 60000
 
@@ -19,6 +22,8 @@ function NewMessageHandler<T>(
    consume_options: SubscribeOptions<T>
 ): (m: Amqp.ConsumeMessage | null) => void {
    return async (message: Amqp.ConsumeMessage | null) => {
+      Log('message_received')
+
       if (_.isNil(message)) {
          return
       }
@@ -67,6 +72,16 @@ async function RetryOrBackoff<T>(
    queue_config: SubscribeOptions<T>
 ): Promise<any> {
    const message_retry_count: number = _.get(message, 'properties.headers.x-death[0].count', 0)
+
+   if (Log.enabled) {
+      Log(
+         'retry_or_backoff [retry_count=%d,max_retries=%d,dlx=%s,dlq=%s]',
+         message_retry_count,
+         queue_config.max_retry_count,
+         queue_config.dead_letter_exchange,
+         queue_config.dead_letter_queue
+      )
+   }
 
    if (message_retry_count >= queue_config.max_retry_count) {
       try {
@@ -176,6 +191,10 @@ export interface PublishOptions {
 }
 
 export function subscribe<T>(amqp_manager: AmqpManager, subscribe_options: SubscribeOptions<T>): Subscription {
+   if (Log.enabled) {
+      Log('subscribe [%o]', subscribe_options)
+   }
+
    let consumer_tag: string | null = null
 
    amqp_manager.connect()
@@ -198,6 +217,8 @@ export function subscribe<T>(amqp_manager: AmqpManager, subscribe_options: Subsc
 
    return {
       async cancel(): Promise<void> {
+         Log('cancel_subscription')
+
          if (!_.isNil(consumer_tag)) {
             const channel = await amqp_manager.channel(channel_name)
             await channel.cancel(consumer_tag)
@@ -207,6 +228,10 @@ export function subscribe<T>(amqp_manager: AmqpManager, subscribe_options: Subsc
 }
 
 export async function publish(amqp_manager: AmqpManager, publish_options: PublishOptions): Promise<void> {
+   if (Log.enabled) {
+      Log('publish [%o]', { ...publish_options, data: `<<${publish_options.data.length} bytes>>` })
+   }
+
    const { exchange, queue, confirm, data, amqp_options } = publish_options
    const channel_name = `${publish_options.exchange}-outbound`
 
