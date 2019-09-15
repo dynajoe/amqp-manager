@@ -15,11 +15,13 @@
       "noFallthroughCasesInSwitch": true,
       "noUnusedLocals": true,
       "noUnusedParameters": true,
-      "outDir": "dist",
-      "typeRoots": ["node_modules/@types"],
-      "types": ["@types/node"]
+      "noImplicitAny": true,
+      "noStrictGenericChecks": false,
+      "strictFunctionTypes": true,
+      "strictNullChecks": true,
+      "outDir": "dist"
    },
    "compileOnSave": false,
    "files": ["./src/index.ts"],
-   "exclude": ["node_modules", ".vscode", "dist"],
+   "exclude": ["node_modules", ".vscode", "dist"]
 }

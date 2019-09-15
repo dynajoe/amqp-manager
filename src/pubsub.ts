@@ -17,8 +17,12 @@ function NewMessageHandler<T>(
    ch: Amqp.Channel | Amqp.ConfirmChannel,
    amqp_manager: AmqpManager,
    consume_options: SubscribeOptions<T>
-): (m: Amqp.Message) => void {
-   return async (message: Amqp.Message) => {
+): (m: Amqp.ConsumeMessage | null) => void {
+   return async (message: Amqp.ConsumeMessage | null) => {
+      if (_.isNil(message)) {
+         return
+      }
+
       const parsed_message = await consume_options.parser(message)
 
       try {
@@ -71,7 +75,6 @@ async function RetryOrBackoff<T>(
             data: message.content,
             exchange: queue_config.dead_letter_exchange,
             queue: queue_config.dead_letter_queue,
-            amqp_options: null,
          })
       } finally {
          ch.ack(message)
@@ -141,7 +144,7 @@ export interface SubscribeOptions<T> {
    max_retry_count: number
    parser: Parser<T>
    handler: Handler<T>
-   onError(error: any)
+   onError(error: any): void
 }
 
 export interface AckInput<T> {
@@ -173,7 +176,7 @@ export interface PublishOptions {
 }
 
 export function subscribe<T>(amqp_manager: AmqpManager, subscribe_options: SubscribeOptions<T>): Subscription {
-   let consumer_tag = null
+   let consumer_tag: string | null = null
 
    amqp_manager.connect()
 
@@ -211,7 +214,7 @@ export async function publish(amqp_manager: AmqpManager, publish_options: Publis
       const channel = await amqp_manager.confirmChannel(channel_name)
 
       await new Promise((resolve, reject) => {
-         channel.publish(exchange, queue, data, amqp_options, error => {
+         channel.publish(exchange, _.defaultTo(queue, ''), data, amqp_options, error => {
             return !_.isNil(error) ? reject(error) : resolve()
          })
       })
@@ -219,6 +222,6 @@ export async function publish(amqp_manager: AmqpManager, publish_options: Publis
       await channel.waitForConfirms()
    } else {
       const channel = await amqp_manager.channel(channel_name)
-      channel.publish(exchange, queue, data, amqp_options)
+      channel.publish(exchange, _.defaultTo(queue, ''), data, amqp_options)
    }
 }

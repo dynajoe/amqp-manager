@@ -1,8 +1,9 @@
-import { Logger } from './logger'
 import * as _ from 'lodash'
 import * as Amqp from 'amqplib'
 import * as T from './types'
+import Debug from 'debug'
 
+const Log = Debug('manager')
 const Machina = require('machina')
 const QueryString = require('querystring')
 
@@ -26,7 +27,7 @@ export const AmqpConnectionFsm = Machina.Fsm.extend({
       },
       connect: {
          _onEnter: function() {
-            Logger.info('connect/enter')
+            Log('connect/enter')
             const config: T.AmqpConfig = this.config
             const conn = config.connection
 
@@ -49,36 +50,36 @@ export const AmqpConnectionFsm = Machina.Fsm.extend({
             )
          },
          error: function() {
-            Logger.info('connect/error')
+            Log('connect/error')
             this.deferAndTransition('disconnect')
          },
       },
       connected: {
          _onEnter: function() {
-            Logger.info('connected/enter')
+            Log('connected/enter')
 
-            this.memory.connection.on('error', error => {
+            this.memory.connection.on('error', (error: Error) => {
                this.handle('connection_error', error)
             })
 
-            this.memory.connection.on('close', error => {
+            this.memory.connection.on('close', (error: Error) => {
                this.handle('connection_close', error)
             })
 
             this.emit('connected', this.memory.connection)
          },
-         connection_error: function(error) {
-            Logger.info('connected/connection_error', error)
+         connection_error: function(error: Error) {
+            Log('connected/connection_error', error)
             this.deferAndTransition('disconnect')
          },
-         connection_close: function(error) {
-            Logger.info('connected/connection_close', error)
+         connection_close: function(error: Error) {
+            Log('connected/connection_close', error)
             this.deferAndTransition('disconnect')
          },
       },
       disconnect: {
          _onEnter: function() {
-            Logger.info('disconnect/enter')
+            Log('disconnect/enter')
 
             if (this.memory.connection) {
                this.memory.connection.removeAllListeners()
@@ -97,7 +98,7 @@ export const AmqpConnectionFsm = Machina.Fsm.extend({
       },
       reconnect: {
          _onEnter: function() {
-            Logger.info('reconnect/enter')
+            Log('reconnect/enter')
             const reconnects = (this.memory.reconnects || 0) + 1
             const waitTimeMs = Math.min(Math.pow(2, reconnects) * 100, 60 * 1000)
 

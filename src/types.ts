@@ -14,6 +14,7 @@ export interface AmqpQueueConfig {
 export interface AmqpBindingConfig {
    exchange: string
    queue: string
+   pattern: string
 }
 
 export interface AmqpConnectionConfig {
