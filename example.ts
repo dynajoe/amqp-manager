@@ -41,7 +41,19 @@ const AmqpConfig = {
             durable: true,
             autoDelete: false,
             exclusive: false,
-            deadLetterExchange: 'example.dead.ex',
+            deadLetterExchange: '',
+            deadLetterRoutingKey: 'example.retry.q',
+         },
+      },
+      {
+         queue: 'example.retry.q',
+         options: {
+            durable: true,
+            autoDelete: false,
+            exclusive: false,
+            deadLetterExchange: '',
+            deadLetterRoutingKey: 'test.q',
+            messageTtl: 1000,
          },
       },
       {
@@ -73,15 +85,19 @@ const RunApp = async () => {
       queue: 'test.q',
       channel_name: 'inbound',
       prefetch_count: 10,
-      retry_queue: null,
-      dead_letter_exchange: null,
-      dead_letter_queue: null,
+      retry_queue: 'example.retry.q',
+      dead_letter_exchange: 'example.dead.ex',
+      dead_letter_queue: 'example.dead.q',
       max_retry_count: 0,
       onError: error => {
          console.log(error)
       },
       handler: async (input: AckInput<{ key: string }>) => {
-         await input.ack()
+         if (Math.random() < 0.5) {
+            await input.reject()
+         } else {
+            await input.ack()
+         }
 
          if (messages_in_flight[input.message.key] == null) {
             console.log('Key not found', input.message.key)

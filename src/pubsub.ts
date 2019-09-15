@@ -34,7 +34,7 @@ function NewMessageHandler<T>(
             clearTimeout(timeout_handle)
 
             if (!input.isHandled()) {
-               await input.reject(`Handle message timeout`)
+               await input.reject()
             }
          }
 
@@ -147,8 +147,8 @@ export interface SubscribeOptions<T> {
 export interface AckInput<T> {
    message: T
    ack(): Promise<void>
-   nack(reason: any): Promise<void>
-   reject(reason: any): Promise<void>
+   nack(): Promise<void>
+   reject(): Promise<void>
    isHandled(): boolean
 }
 
