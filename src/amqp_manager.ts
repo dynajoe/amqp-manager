@@ -35,6 +35,7 @@ export class AmqpManager extends EventEmitter {
          queues: [],
          exchanges: [],
          bindings: [],
+         channel_timeout: 2000,
       })
 
       this.fsm = new AmqpConnectionFsm(this.config)
@@ -124,7 +125,7 @@ export class AmqpManager extends EventEmitter {
 
          setTimeout(() => {
             reject(new Error('Channel Timeout'))
-         }, 2000)
+         }, this.config.channel_timeout)
       })
 
       if (!this.waitReady) {
