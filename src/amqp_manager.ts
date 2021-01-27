@@ -14,7 +14,7 @@ export class AmqpManager extends EventEmitter {
    private connection: Amqp.Connection
    private channels: _.Dictionary<Amqp.Channel | Amqp.ConfirmChannel>
 
-   constructor(config: T.AmqpConfig) {
+   constructor(config: Partial<T.AmqpConfig>) {
       super()
 
       this.channels = {}
