@@ -39,4 +39,5 @@ export interface AmqpConfig {
    exchanges: AmqpExchangeConfig[]
    queues: AmqpQueueConfig[]
    bindings: AmqpBindingConfig[]
+   channel_timeout: number
 }
